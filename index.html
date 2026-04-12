@@ -15,103 +15,148 @@
   }
   main {
     max-width: 520px; margin: 0 auto;
-    padding: 48px 24px env(safe-area-inset-bottom, 24px);
-    display: flex; flex-direction: column; gap: 20px;
+    padding: 32px 20px env(safe-area-inset-bottom, 24px);
+    display: flex; flex-direction: column; gap: 16px;
   }
-  h1 { font-size: 2rem; margin: 0 0 8px 0; }
-  p.sub { margin: 0 0 8px 0; color: #9a9aa2; font-size: 0.95rem; }
+  h1 { font-size: 1.75rem; margin: 0 0 4px 0; }
+  p.sub { margin: 0 0 8px 0; color: #9a9aa2; font-size: 0.9rem; }
   .card {
     background: #16161b; border: 1px solid #24242c;
-    border-radius: 14px; padding: 16px 18px;
+    border-radius: 14px; padding: 14px 16px;
   }
   .row {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 6px 0; gap: 12px;
+    padding: 6px 0; gap: 12px; font-size: 0.9rem;
   }
   .row + .row { border-top: 1px solid #24242c; }
-  .label { color: #9a9aa2; font-size: 0.85rem; }
-  .value { font-weight: 600; font-size: 0.95rem; text-align: right;
+  .label { color: #9a9aa2; }
+  .value { font-weight: 600; text-align: right;
            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
-  button.big {
-    border: none; border-radius: 14px; padding: 22px;
-    font-size: 1.2rem; font-weight: 700; letter-spacing: 0.02em;
+  button {
+    border: none; border-radius: 12px; padding: 16px;
+    font-size: 1rem; font-weight: 700;
     color: white; cursor: pointer; width: 100%;
     transition: transform 0.05s ease;
+    font-family: inherit;
   }
-  button.big:active { transform: scale(0.985); }
-  button.big.start { background: #1f6feb; }
-  button.big.stop  { background: #da3633; }
-  button.big:disabled { background: #3b3b44; color: #7a7a85; cursor: not-allowed; }
+  button:active { transform: scale(0.985); }
+  button.big { padding: 22px; font-size: 1.2rem; }
+  button.start { background: #1f6feb; }
+  button.stop  { background: #da3633; }
+  button.ghost { background: #2a2a33; }
+  button:disabled { background: #3b3b44; color: #7a7a85; cursor: not-allowed; }
+  .meter-wrap {
+    height: 10px; background: #24242c; border-radius: 5px; overflow: hidden;
+    margin-top: 8px;
+  }
+  .meter-bar {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #1f6feb 0%, #38d057 60%, #f0a020 85%, #da3633 100%);
+    transition: width 0.04s linear;
+  }
   .hint {
-    font-size: 0.85rem; color: #f0a020;
+    font-size: 0.82rem; color: #f0a020;
     background: #2a1f08; border: 1px solid #50380c;
-    border-radius: 10px; padding: 10px 12px;
+    border-radius: 10px; padding: 10px 12px; line-height: 1.45;
   }
   .error {
-    font-size: 0.85rem; color: #ff6b6b;
+    font-size: 0.82rem; color: #ff8080;
     background: #2a0d0d; border: 1px solid #501616;
-    border-radius: 10px; padding: 10px 12px;
+    border-radius: 10px; padding: 10px 12px; line-height: 1.45;
   }
   footer {
-    margin-top: 8px; font-size: 0.75rem; color: #6a6a72; text-align: center;
+    margin-top: 4px; font-size: 0.72rem; color: #6a6a72; text-align: center;
     line-height: 1.5;
   }
-  audio { display: none; }
+  .log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.72rem; color: #888;
+    background: #0e0e12; border: 1px solid #1d1d24; border-radius: 8px;
+    padding: 8px 10px; max-height: 120px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-word;
+  }
 </style>
 </head>
 <body>
 <main>
   <header>
     <h1>AudioBridge</h1>
-    <p class="sub">Mic → whatever audio output is currently routed.</p>
+    <p class="sub">Mic → current audio output (Web Audio path).</p>
   </header>
 
   <section class="card">
-    <div class="row">
-      <span class="label">Input</span>
-      <span class="value" id="inputName">—</span>
-    </div>
-    <div class="row">
-      <span class="label">State</span>
-      <span class="value" id="stateLabel">Idle</span>
-    </div>
+    <div class="row"><span class="label">State</span><span class="value" id="stateLabel">Idle</span></div>
+    <div class="row"><span class="label">AudioContext</span><span class="value" id="ctxLabel">—</span></div>
+    <div class="row"><span class="label">Sample rate</span><span class="value" id="rateLabel">—</span></div>
+    <div class="row"><span class="label">Input device</span><span class="value" id="inputName">—</span></div>
+    <div class="row"><span class="label">Mic level</span><span class="value" id="levelLabel">—</span></div>
+    <div class="meter-wrap"><div class="meter-bar" id="meterBar"></div></div>
   </section>
 
-  <p class="hint" id="hint">
-    Connect your Bluetooth speaker in your device's Settings <strong>before</strong> tapping Start.
-    The page can't see which output is active — it just plays to whatever the OS is routing.
+  <p class="hint">
+    Pair &amp; connect your Bluetooth speaker in <strong>Settings → Bluetooth</strong> before tapping Start.
+    If you still hear audio from the iPhone earpiece (the quiet one at the top), iOS has routed this to
+    the phone call receiver — try the <em>test tone</em> button to confirm BT routing is working.
   </p>
 
   <button class="big start" id="toggleBtn">Start</button>
+  <button class="ghost" id="toneBtn">▶ Play 1-second test tone</button>
 
   <p class="error" id="errorBox" hidden></p>
 
-  <footer>
-    Keep this tab in the foreground — iOS pauses microphone capture when the tab goes to the background or the phone locks.<br>
-    Expect ~150–300 ms of Bluetooth latency. That's physics, not the page.
-  </footer>
+  <section class="card">
+    <div class="row"><span class="label">Debug log</span></div>
+    <div class="log" id="log">(empty)</div>
+  </section>
 
-  <audio id="monitor" playsinline autoplay></audio>
+  <footer>
+    Keep this tab in the foreground. iOS pauses mic capture when Safari goes to the background or the phone locks.<br>
+    Expect ~150–300 ms of Bluetooth A2DP latency.
+  </footer>
 </main>
 
 <script>
 (() => {
   const btn       = document.getElementById('toggleBtn');
+  const toneBtn   = document.getElementById('toneBtn');
   const inputEl   = document.getElementById('inputName');
   const stateEl   = document.getElementById('stateLabel');
+  const ctxEl     = document.getElementById('ctxLabel');
+  const rateEl    = document.getElementById('rateLabel');
+  const levelEl   = document.getElementById('levelLabel');
+  const meterBar  = document.getElementById('meterBar');
   const errorBox  = document.getElementById('errorBox');
-  const monitor   = document.getElementById('monitor');
+  const logEl     = document.getElementById('log');
 
-  let stream = null;
-  let running = false;
+  let audioCtx  = null;
+  let stream    = null;
+  let source    = null;
+  let analyser  = null;
+  let meterRAF  = null;
+  let running   = false;
+
+  const logLines = [];
+  function log(msg) {
+    const time = new Date().toLocaleTimeString([], { hour12: false });
+    logLines.push(`${time}  ${msg}`);
+    if (logLines.length > 40) logLines.shift();
+    logEl.textContent = logLines.join('\n');
+    logEl.scrollTop = logEl.scrollHeight;
+  }
 
   function setError(msg) {
     if (!msg) { errorBox.hidden = true; errorBox.textContent = ''; return; }
     errorBox.hidden = false;
     errorBox.textContent = msg;
+    log('ERROR: ' + msg);
   }
 
   function setState(label) { stateEl.textContent = label; }
+
+  function updateCtxLabel() {
+    ctxEl.textContent = audioCtx ? audioCtx.state : '—';
+    rateEl.textContent = audioCtx ? audioCtx.sampleRate + ' Hz' : '—';
+  }
 
   function setRunning(isRunning) {
     running = isRunning;
@@ -119,6 +164,48 @@
     btn.classList.toggle('start', !isRunning);
     btn.classList.toggle('stop',   isRunning);
     setState(isRunning ? 'Running' : 'Idle');
+  }
+
+  async function ensureContext() {
+    if (!audioCtx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) throw new Error('Web Audio API not supported in this browser.');
+      audioCtx = new Ctx({ latencyHint: 'interactive' });
+      log('AudioContext created: ' + audioCtx.state + ', ' + audioCtx.sampleRate + ' Hz');
+    }
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+      log('AudioContext resumed → ' + audioCtx.state);
+    }
+    updateCtxLabel();
+  }
+
+  // Mic level meter from an AnalyserNode.
+  function startMeter() {
+    if (!analyser) return;
+    const buf = new Uint8Array(analyser.fftSize);
+    const tick = () => {
+      analyser.getByteTimeDomainData(buf);
+      // Peak deviation from 128 (silence) → 0..1
+      let peak = 0;
+      for (let i = 0; i < buf.length; i++) {
+        const d = Math.abs(buf[i] - 128);
+        if (d > peak) peak = d;
+      }
+      const level = peak / 128;
+      const pct = Math.min(100, level * 160); // gentle boost so quiet speech registers
+      meterBar.style.width = pct.toFixed(1) + '%';
+      levelEl.textContent = (level * 100).toFixed(0) + '%';
+      meterRAF = requestAnimationFrame(tick);
+    };
+    tick();
+  }
+
+  function stopMeter() {
+    if (meterRAF) cancelAnimationFrame(meterRAF);
+    meterRAF = null;
+    meterBar.style.width = '0%';
+    levelEl.textContent = '—';
   }
 
   async function start() {
@@ -129,8 +216,14 @@
     }
 
     try {
-      // Request raw mic — no echo cancel, no noise suppression, no auto gain.
-      // Those processors mangle anything that isn't voice.
+      await ensureContext();
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
+
+    try {
+      log('Requesting mic permission…');
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
@@ -145,44 +238,88 @@
     }
 
     const track = stream.getAudioTracks()[0];
-    inputEl.textContent = track && track.label ? track.label : 'Default microphone';
+    const label = (track && track.label) || 'Default microphone';
+    inputEl.textContent = label;
+    log('Mic granted: ' + label + ' (readyState=' + (track && track.readyState) + ')');
 
-    // Route the mic stream straight to an <audio> element.
-    // srcObject on a media element is the most reliable path on iOS Safari —
-    // Web Audio API's createMediaStreamSource works too, but <audio> plays
-    // through the loudspeaker / BT route more consistently.
-    monitor.srcObject = stream;
+    // KEY PATH: route the mic through the AudioContext, not an <audio> element.
+    // On iOS Safari this forces the "media playback" audio session category,
+    // which routes to the loudspeaker / AirPlay / Bluetooth output — not the
+    // phone-call earpiece receiver that <audio srcObject> would trigger.
     try {
-      await monitor.play();
-    } catch (err) {
-      setError('Playback refused by browser: ' + err.message);
-      await stop();
-      return;
-    }
+      source = audioCtx.createMediaStreamSource(stream);
 
-    setRunning(true);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.2;
+
+      // source → analyser (for the meter) AND source → destination (monitor)
+      source.connect(analyser);
+      source.connect(audioCtx.destination);
+
+      log('Wired: mic → AudioContext.destination');
+      updateCtxLabel();
+      startMeter();
+      setRunning(true);
+    } catch (err) {
+      setError('Failed to wire audio graph: ' + err.message);
+      await stop();
+    }
   }
 
   async function stop() {
+    stopMeter();
+    if (source) { try { source.disconnect(); } catch {} source = null; }
+    if (analyser) { try { analyser.disconnect(); } catch {} analyser = null; }
     if (stream) {
       stream.getTracks().forEach(t => t.stop());
       stream = null;
     }
-    monitor.pause();
-    monitor.srcObject = null;
     inputEl.textContent = '—';
     setRunning(false);
+    log('Stopped.');
+    updateCtxLabel();
   }
 
-  btn.addEventListener('click', () => {
-    if (running) { stop(); } else { start(); }
+  async function playTone() {
+    setError(null);
+    try {
+      await ensureContext();
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
+    log('Playing test tone → AudioContext.destination');
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 440;
+    // Short attack/release to avoid clicks
+    const t0 = audioCtx.currentTime;
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(0.2, t0 + 0.02);
+    gain.gain.linearRampToValueAtTime(0.2, t0 + 0.98);
+    gain.gain.linearRampToValueAtTime(0, t0 + 1.0);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 1.05);
+    osc.onended = () => {
+      try { osc.disconnect(); gain.disconnect(); } catch {}
+      log('Test tone done.');
+    };
+  }
+
+  btn.addEventListener('click', () => { running ? stop() : start(); });
+  toneBtn.addEventListener('click', playTone);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && running) {
+      log('Tab hidden → stopping.');
+      stop();
+    }
   });
 
-  // Stop cleanly if the tab is hidden / phone locked — iOS would suspend
-  // us anyway, and this avoids a zombie stream on resume.
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && running) { stop(); }
-  });
+  log('Ready. Tap Start (mic) or the test tone button.');
 })();
 </script>
 </body>
