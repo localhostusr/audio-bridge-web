@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>AudioBridge</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body {
+    margin: 0; padding: 0;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: #0b0b0e; color: #eaeaea;
+  }
+  main {
+    max-width: 520px; margin: 0 auto;
+    padding: 48px 24px env(safe-area-inset-bottom, 24px);
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  h1 { font-size: 2rem; margin: 0 0 8px 0; }
+  p.sub { margin: 0 0 8px 0; color: #9a9aa2; font-size: 0.95rem; }
+  .card {
+    background: #16161b; border: 1px solid #24242c;
+    border-radius: 14px; padding: 16px 18px;
+  }
+  .row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 0; gap: 12px;
+  }
+  .row + .row { border-top: 1px solid #24242c; }
+  .label { color: #9a9aa2; font-size: 0.85rem; }
+  .value { font-weight: 600; font-size: 0.95rem; text-align: right;
+           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+  button.big {
+    border: none; border-radius: 14px; padding: 22px;
+    font-size: 1.2rem; font-weight: 700; letter-spacing: 0.02em;
+    color: white; cursor: pointer; width: 100%;
+    transition: transform 0.05s ease;
+  }
+  button.big:active { transform: scale(0.985); }
+  button.big.start { background: #1f6feb; }
+  button.big.stop  { background: #da3633; }
+  button.big:disabled { background: #3b3b44; color: #7a7a85; cursor: not-allowed; }
+  .hint {
+    font-size: 0.85rem; color: #f0a020;
+    background: #2a1f08; border: 1px solid #50380c;
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .error {
+    font-size: 0.85rem; color: #ff6b6b;
+    background: #2a0d0d; border: 1px solid #501616;
+    border-radius: 10px; padding: 10px 12px;
+  }
+  footer {
+    margin-top: 8px; font-size: 0.75rem; color: #6a6a72; text-align: center;
+    line-height: 1.5;
+  }
+  audio { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>AudioBridge</h1>
+    <p class="sub">Mic → whatever audio output is currently routed.</p>
+  </header>
+
+  <section class="card">
+    <div class="row">
+      <span class="label">Input</span>
+      <span class="value" id="inputName">—</span>
+    </div>
+    <div class="row">
+      <span class="label">State</span>
+      <span class="value" id="stateLabel">Idle</span>
+    </div>
+  </section>
+
+  <p class="hint" id="hint">
+    Connect your Bluetooth speaker in your device's Settings <strong>before</strong> tapping Start.
+    The page can't see which output is active — it just plays to whatever the OS is routing.
+  </p>
+
+  <button class="big start" id="toggleBtn">Start</button>
+
+  <p class="error" id="errorBox" hidden></p>
+
+  <footer>
+    Keep this tab in the foreground — iOS pauses microphone capture when the tab goes to the background or the phone locks.<br>
+    Expect ~150–300 ms of Bluetooth latency. That's physics, not the page.
+  </footer>
+
+  <audio id="monitor" playsinline autoplay></audio>
+</main>
+
+<script>
+(() => {
+  const btn       = document.getElementById('toggleBtn');
+  const inputEl   = document.getElementById('inputName');
+  const stateEl   = document.getElementById('stateLabel');
+  const errorBox  = document.getElementById('errorBox');
+  const monitor   = document.getElementById('monitor');
+
+  let stream = null;
+  let running = false;
+
+  function setError(msg) {
+    if (!msg) { errorBox.hidden = true; errorBox.textContent = ''; return; }
+    errorBox.hidden = false;
+    errorBox.textContent = msg;
+  }
+
+  function setState(label) { stateEl.textContent = label; }
+
+  function setRunning(isRunning) {
+    running = isRunning;
+    btn.textContent = isRunning ? 'Stop' : 'Start';
+    btn.classList.toggle('start', !isRunning);
+    btn.classList.toggle('stop',   isRunning);
+    setState(isRunning ? 'Running' : 'Idle');
+  }
+
+  async function start() {
+    setError(null);
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setError('This browser does not expose getUserMedia. On iPhone, use Safari.');
+      return;
+    }
+
+    try {
+      // Request raw mic — no echo cancel, no noise suppression, no auto gain.
+      // Those processors mangle anything that isn't voice.
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl:  false,
+        },
+        video: false,
+      });
+    } catch (err) {
+      setError('Microphone permission denied or unavailable: ' + err.message);
+      return;
+    }
+
+    const track = stream.getAudioTracks()[0];
+    inputEl.textContent = track && track.label ? track.label : 'Default microphone';
+
+    // Route the mic stream straight to an <audio> element.
+    // srcObject on a media element is the most reliable path on iOS Safari —
+    // Web Audio API's createMediaStreamSource works too, but <audio> plays
+    // through the loudspeaker / BT route more consistently.
+    monitor.srcObject = stream;
+    try {
+      await monitor.play();
+    } catch (err) {
+      setError('Playback refused by browser: ' + err.message);
+      await stop();
+      return;
+    }
+
+    setRunning(true);
+  }
+
+  async function stop() {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    monitor.pause();
+    monitor.srcObject = null;
+    inputEl.textContent = '—';
+    setRunning(false);
+  }
+
+  btn.addEventListener('click', () => {
+    if (running) { stop(); } else { start(); }
+  });
+
+  // Stop cleanly if the tab is hidden / phone locked — iOS would suspend
+  // us anyway, and this avoids a zombie stream on resume.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && running) { stop(); }
+  });
+})();
+</script>
+</body>
+</html>
