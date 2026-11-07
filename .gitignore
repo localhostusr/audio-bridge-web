@@ -1,0 +1,4 @@
+.DS_Store
+
+# Claude Code per-machine permission approvals (can hold typed secrets)
+.claude/settings.local.json
